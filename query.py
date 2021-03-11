@@ -17,7 +17,7 @@ def gen_fp(mol):
     return gen_fp_morgan2(mol)
 
 
-def read_smiles(file):
+def read_smiles(file, fragment):
     with open(file) as f:
         mol = None
         smi = None
@@ -25,21 +25,41 @@ def read_smiles(file):
             if line:
                 smi = line.strip()
                 mol = Chem.MolFromSmiles(smi)
+                if fragment:
+                    mol = find_biggest_component(mol)
+                    smi = Chem.MolToSmiles(mol)
             yield mol, smi
 
 
-def read_sdf(file):
+def read_sdf(file, fragment):
     supplr = Chem.SDMolSupplier(file)
     for mol in supplr:
+        if fragment:
+            mol = find_biggest_component(mol)
         smi = Chem.MolToSmiles(mol)
         yield mol, smi
 
 
-def read_file(file):
+def read_file(file, fragment):
     if file.endswith('.sdf'):
-        return read_sdf(file)
+        return read_sdf(file, fragment)
     else:
-        return read_smiles(file)
+        return read_smiles(file, fragment)
+
+
+def find_biggest_component(mol):
+    frags = Chem.GetMolFrags(mol, asMols=True)
+
+    if len(frags) == 1:
+        return mol
+    else:
+        biggest_count = 0
+        for frag in frags:
+            hac = frag.GetNumHeavyAtoms()
+            if hac > biggest_count:
+                biggest_count = hac
+                biggest_mol = frag
+        return biggest_mol
 
 
 p1 = sys.argv[1]
@@ -53,7 +73,7 @@ print('Target:', p1, 'Query:', p2, 'MinThreshold:', threshold1, 'MaxThreshold:',
 t1 = time.time()
 fps1 = []
 smiles1 = []
-for mol, smi in read_file(p1):
+for mol, smi in read_file(p1, False):
     if mol:
         fp = gen_fp(mol)
         fps1.append(fp)
@@ -67,7 +87,7 @@ t3 = time.time()
 hits = []
 best_scores = []
 best_target = []
-for mol, smi in read_file(p2):
+for mol, smi in read_file(p2, True):
     if mol:
         fp2 = gen_fp(mol)
         scores = DataStructs.BulkTverskySimilarity(fp2, fps1, alpha, 1.0 - alpha)
